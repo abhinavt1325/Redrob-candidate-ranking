@@ -1,0 +1,45 @@
+# Virtual environment
+env/
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Large datasets
+candidates.jsonl
+dataset_cleaned.pkl
+dataset_features_v1.pkl
+dataset_features_v2.pkl
+dataset_features_v3.pkl
+
+# Embeddings
+skill_embeddings.pkl
+career_embeddings.pkl
+profile_embeddings.pkl
+
+# Intermediate artifacts
+artifacts/
+data/
+
+# Output files
+submission.csv
+top100_preview.csv
+
+# Office documents (optional)
+*.pptx
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+submission_metadata_template.yaml
+submission_spec.docx
+redrob_signals_doc.docx
+README.docx
+job_description.docx
