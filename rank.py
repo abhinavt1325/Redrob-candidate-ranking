@@ -510,6 +510,45 @@ rank_df['ir_bonus'] = (
         axis=1
     )
 )
+
+# -------------------------------
+# Profile Consistency Penalty
+# -------------------------------
+
+rank_df['profile_consistency_penalty'] = 0
+
+# Too many skills with low average usage duration
+rank_df.loc[
+    (rank_df['num_skills'] > 15)
+    &
+    (rank_df['avg_skill_duration_months'] < 6),
+    'profile_consistency_penalty'
+] += 1
+
+# Experience mismatch between profile and career history
+rank_df.loc[
+    abs(
+        rank_df['profile_years_of_experience']
+        -
+        rank_df['total_career_months']/12
+    ) > 2,
+    'profile_consistency_penalty'
+] += 1
+
+# Extremely high endorsements with low experience
+rank_df.loc[
+    (rank_df['avg_skill_endorsements'] > 80)
+    &
+    (rank_df['profile_years_of_experience'] < 3),
+    'profile_consistency_penalty'
+] += 1
+
+rank_df['profile_consistency_penalty'] = (
+    MinMaxScaler()
+    .fit_transform(
+        rank_df[['profile_consistency_penalty']]
+    )
+)
 rank_df['final_score'] = (
       0.40 * rank_df['semantic_score_norm']
     + 0.20 * rank_df['career_score']
@@ -523,6 +562,7 @@ rank_df['final_score'] = (
     - 0.05 * rank_df['career_company_penalty']
     - 0.05 * rank_df['notice_penalty']
     + 0.05 * rank_df['ir_bonus']
+    - 0.03 * rank_df['profile_consistency_penalty']
 )
 
 
