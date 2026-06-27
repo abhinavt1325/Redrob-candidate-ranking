@@ -140,7 +140,7 @@ with open(INPUT_FILE, 'r', encoding='utf-8') as f:
         if total_lines <= 200 or passes_filter(row):
             rows.append(row)
 
-rank_df = pd.DataFrame(rows)
+rank_df = pd.DataFrame([flatten_candidate(r) for r in rows])
 print(f"Pre-filtered: {len(rank_df)} candidates (from full pool)")
 
 
