@@ -122,6 +122,10 @@ def passes_filter(row):
         return any(k in text for k in IR_KW)
     return False
 
+# Count lines first to detect sandbox/demo mode
+with open(INPUT_FILE, 'r', encoding='utf-8') as f:
+    total_lines = sum(1 for l in f if l.strip())
+
 rows = []
 with open(INPUT_FILE, 'r', encoding='utf-8') as f:
     for line in f:
@@ -132,8 +136,9 @@ with open(INPUT_FILE, 'r', encoding='utf-8') as f:
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if passes_filter(row):
-            rows.append(flatten_candidate(row))
+        # Small file = sandbox mode, skip filter
+        if total_lines <= 200 or passes_filter(row):
+            rows.append(row)
 
 rank_df = pd.DataFrame(rows)
 print(f"Pre-filtered: {len(rank_df)} candidates (from full pool)")
