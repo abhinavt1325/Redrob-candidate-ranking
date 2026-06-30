@@ -1,0 +1,96 @@
+# Redrob Hackathon — Submission Metadata
+# Team: BeyondCV | India Runs Data and AI Challenge
+
+# ============================================================================
+# Team identity
+# ============================================================================
+team_name: "BeyondCV"
+
+primary_contact:
+  name: "Abhinav Thakur"
+  email: "abhinavt0613@gmail.com"                       
+  phone: "8456832268"                        
+
+team_members:
+  - name: "Abhinav Thakur"
+    email: "abhinavt0613@gmail.com"                     
+    role: "Team Lead & ML Engineer"
+  - name: "Anurudh Shrestha"
+    email: "anirudhshrestha28@gmail.com"                      
+    role: "ML Engineer"
+  - name: "Aashika Kumari"
+    email: "aashikapandey10@gmail.com"                      
+    role: "Data Engineer"
+  - name: "Ayushi Choudhary"
+    email: "choudharybinaykumar0@gmail.com"                      
+    role: "Data Engineer"
+
+# ============================================================================
+# Code and reproducibility
+# ============================================================================
+github_repo: "https://github.com/abhinavt1325/Redrob-candidate-ranking"
+
+sandbox_link: "https://colab.research.google.com/drive/1iY1G2Vz7iVfTe84aoJxTHPnU_LJibhGm#scrollTo=p1ZGVRE5GrNZ"
+
+reproduce_command: "python rank_final.py candidates.jsonl --out submission.csv"
+
+# ============================================================================
+# Compute environment
+# ============================================================================
+compute:
+  platform: "Dell Laptop"      
+  cpu_cores: 2                           
+  ram_gb: 8                              
+  python_version: "3.14.3"               
+  os: "Windows 10 Pro"                   
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: false
+  pre_computation_time_minutes: 0
+
+# ============================================================================
+# AI tools declaration
+# ============================================================================
+ai_tools_used:
+  - "Claude"
+  - "ChatGPT"
+  - "Gemini"
+
+ai_usage_summary: |
+  Used Claude, ChatGPT, and Gemini for architecture discussion, code review,
+  weight tuning analysis, and debugging. All ranking logic, scoring formula,
+  feature engineering, and reasoning generation were designed and implemented
+  by the team. No candidate data was fed to any external LLM. AI tools were
+  used as coding assistants, not to generate the submission directly.
+
+# ============================================================================
+# Approach summary
+# ============================================================================
+methodology_summary: |
+  BeyondCV is a two-stage CPU-only candidate ranking pipeline that processes
+  100K candidates in under 3 minutes. Stage 1 streams candidates.jsonl
+  line-by-line, applying an exact title whitelist and IR keyword filter to
+  reduce the pool from 100K to ~1,500 relevant candidates without loading
+  all data into RAM. Stage 2 encodes skills, career, and profile text using
+  all-MiniLM-L6-v2 (bundled locally, no internet) in a single batched pass
+  (batch_size=128), then computes cosine similarity against JD embeddings.
+  A 13-signal weighted formula combines semantic similarity (0.42), career
+  score (0.20), behavioral signals (0.16), availability (0.10), skill score
+  (0.09), title prior, industry bonus, IR bonus (gated by title+career to
+  avoid keyword stuffers), and multiple penalties (notice period, services
+  company, integrity, profile consistency). Honeypot detection applies a
+  -0.30 penalty to candidates where stated YOE vs actual career months
+  diverges by >3 years. A power transform (score^1.15) spreads the final
+  score distribution. Per-candidate reasoning is generated from structured
+  data fields — no LLM inference, no hallucination risk. Final output:
+  ranked top-100 with JD-grounded reasoning per candidate.
+
+# ============================================================================
+# Declarations
+# ============================================================================
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true
