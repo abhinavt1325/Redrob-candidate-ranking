@@ -50,52 +50,36 @@ Test the ranker live without any local environment setup:
 ```
 
 ---
+## Pipeline
 
-## 🧠 System Architecture & Pipeline
+### Stage 1 — Fast Pre-filter (streamed, ~30s)
+Reads `candidates.jsonl` line-by-line (never loads all 100K into memory) and keeps only plausibly relevant candidates:
 
-BeyondCV implements a 2-stage hybrid pipeline optimized to balance semantic precision and raw computational throughput:
+- **Hard-excluded titles** — zero relevance to the JD (HR Manager, Marketing Manager, Content Writer, Accountant, Civil/Mechanical Engineer, etc.) are rejected instantly.
+- **Strong titles** — ML Engineer, AI Engineer, NLP Engineer, Recommendation Systems Engineer, Search Engineer, Senior Applied Scientist, etc. — pass automatically.
+- **Conditional titles** — Software Engineer, Data Scientist, Backend Engineer, AI Specialist/Research Engineer — pass only if their skills or career history contain an IR/retrieval keyword (FAISS, Pinecone, Qdrant, Weaviate, Elasticsearch, embeddings, NDCG, recsys, etc.).
 
-```mermaid
-graph TD
-    A[candidates.jsonl] --> B[Stage 1: Streaming Pre-Filter]
-    B -->|Excluded: Unrelated Titles| C[Discarded ~85%]
-    B -->|Plausible Pool ~1,500| D[Stage 2: Single-Pass Batched Embedding]
-    D -->|all-MiniLM-L6-v2 Offline| E[Cosine Similarity: Skills, Career & Profile vs JD]
-    E --> F[Stage 3: Multi-Signal Scoring Engine]
-    F -->|13 Weighted Signals| G[Stage 4: Honeypot & Fraud Guard]
-    G -->|Filter Outliers & Fraud| H[Stage 5: Rule-Based Reasoning Gen]
-    H --> I[submission.csv - Ranked Top 100]
+This typically cuts 100K candidates down to ~1,500, reducing embedding workload by ~98%.
+
+### Stage 2 — Feature Engineering
+For every surviving candidate, the script derives:
+- **Basic counts** — skills, jobs, certifications, languages, degrees
+- **Career features** — current company tenure, total career months, job-switch count, average job duration
+- **Skill features** — average skill duration & endorsements
+- **Education features** — highest degree score (PhD > M.Tech/M.E./M.S. > B.Tech/B.E. > B.Sc)
+- **Text fields** — `skills_text`, `career_text`, `education_text`, `profile_text` for semantic encoding
+
+### Stage 3 — Semantic Encoding & Similarity
+All candidate texts (skills, career, profile) plus three hand-written JD reference texts are encoded in a **single batched pass** with `all-MiniLM-L6-v2` (`batch_size=128`, CPU-optimized, loaded from a local path). Cosine similarity against the JD embeddings produces:
+
+```python
+semantic_score = 0.60 * career_similarity + 0.30 * skill_similarity + 0.10 * profile_similarity
 ```
 
----
+### Stage 4 — Multi-Signal Weighted Scoring
+Thirteen signals are normalized (MinMax) and combined into a single `final_score`:
 
-## 🛠️ Deep Dive: The 5-Stage Pipeline
-
-### Stage 1: Streaming Pre-Filter (High-Throughput Optimization)
-* **The Problem:** Compiling vector embeddings for 100,000 candidates with 3 text fields each requires 300,000 encoding calls, taking over **40 minutes on standard CPUs**.
-* **The Solution:** We stream `candidates.jsonl` line-by-line without loading the file into RAM. Candidate titles are evaluated against strict rules:
-  1. **Hard Excludes:** Zero-relevance titles (e.g., *HR Manager*, *Civil Engineer*, *Marketing Manager*) are rejected instantly.
-  2. **Strong Matches:** ML, NLP, Search, and AI engineering titles pass automatically.
-  3. **Conditional Matches:** Software Engineers and Data Scientists pass *only* if their profile or career history contains target Information Retrieval (IR) keywords (e.g., *Faiss*, *Pinecone*, *Retrieval*, *Vector Search*).
-* **The Outcome:** Safely filters out **~85% of non-matching profiles**, leaving ~1,500 candidates. This cuts the CPU execution time from **40 minutes to under 3 minutes** with zero impact on ranking recall.
-
----
-
-### Stage 2: Batched Semantic Encoding
-* To minimize inference overhead, candidate text attributes are consolidated into three fields (Skills, Career history, Profile details).
-* Rather than calling the encoder three separate times, the texts are packed into a single array and embedded in one batched call (`batch_size=128`) using a local copy of `all-MiniLM-L6-v2`.
-* Cosine similarity is computed against corresponding JD text blocks to generate:
-  1. `skill_similarity`: Skills text alignment vs JD technical requirements.
-  2. `career_similarity`: Career history titles and company text vs JD career goals.
-  3. `profile_similarity`: Headline/summary vs JD general profile.
-* **Semantic Score Synthesis:**
-  $$\text{Semantic Score} = 0.60 \times \text{career\_similarity} + 0.30 \times \text{skill\_similarity} + 0.10 \times \text{profile\_similarity}$$
-
----
-
-### Stage 3: Multi-Signal Scoring Engine
-BeyondCV balances pure semantic match with career tenure, developer activity, and availability signals via a 13-signal weighted formula:
-
+```python
 final_score = (
       0.42 * semantic_score_norm        # Core JD fit (career + skill + profile similarity)
     + 0.20 * career_score               # YOE, tenure, avg job duration, degree
@@ -114,102 +98,102 @@ final_score = (
 )
 ```
 
-#### Detailed Weights and Signals breakdown:
-| Signal Category | Attribute | Weight | Function |
-| :--- | :--- | :--- | :--- |
-| **Core Relevance** | `semantic_score_norm` | **+0.42** | Normalised semantic cosine similarity to the target JD. |
-| **Experience Depth** | `career_score` | **+0.20** | Aggregates years of experience, average tenure, and highest degree score. |
-| **Professional Activity**| `behavior_score` | **+0.15** | Integrates GitHub activity, recruiter response rate, and profile views. |
-| **Availability** | `availability_score` | **+0.10** | Boosts active job seekers, open-to-relocate candidates, and recent log-ins. |
-| **Skill Breadth** | `skill_score` | **+0.10** | Scores based on skill counts, durations, and skill endorsements. |
-| **Title Prior** | `title_prior_norm` | **+0.10** | Normalized mapping of current title alignment to standard engineering roles. |
-| **Location Match** | `location_score` | **+0.06** | Prefers Pune/Noida local candidates or individuals open to relocation. |
-| **Product Target** | `industry_bonus_norm` | **+0.05** | Bonus for candidates operating in product spaces (SaaS, AI, Fintech). |
-| **Guarded IR Bonus** | `ir_bonus_guarded` | **+0.05** | Strategic keyword bonus *gated* by title checks to prevent keyword stuffing. |
-| **Integrity Penalty** | `integrity_penalty` | **-0.05** | Penalty for excessive job hopping (>8 jobs) or extreme inactivity. |
-| **Transition Risk** | `transition_penalty` | **-0.05** | Penalizes non-technical roles claiming unrelated AI skills. |
-| **IT-Services Penalty** | `career_company_penalty`| **-0.05** | Deduct score for candidates whose entire career is spent in IT services firms. |
-| **Notice Period Penalty**| `notice_penalty_norm` | **-0.05** | Proportional penalty for notice periods exceeding 30 days. |
-| **Consistency Guard** | `profile_consistency_penalty`| **-0.03** | Penalty for abnormal profiles (e.g. extremely high endorsements with <3 YOE). |
+**Why `ir_bonus_guarded`?** A raw IR-keyword bonus rewards anyone who lists "Pinecone" in their skills — including candidates with no real IR background. The guarded version only applies the bonus when `title_prior > 0 AND career_similarity > 0.30`, so keyword presence must be backed by an actually relevant title and career history.
+
+### Stage 5 — Honeypot / Fraud Detection
+Candidates whose stated years of experience diverge from their actual summed career-history months by more than 3 years receive a flat **−0.30** penalty on `final_score` — pushing statistically impossible profiles out of the top 100. This deterministic rule was chosen because every honeypot profile found during dataset exploration shared this exact signature.
+
+### Stage 6 — Ranking & Reasoning
+The top 100 candidates by `final_score` are selected and given sequential ranks. For each, `generate_reason()` builds a per-candidate explanation entirely from structured data fields:
+
+- Current title, YOE, and company
+- Specific IR/retrieval keywords found in career or skills text (not just the skills section)
+- Product- vs. services-company signal
+- Experience-band fit relative to the JD's target range
+- Recruiter responsiveness and GitHub activity
+- Inactivity / notice-period flags, where relevant
+- Location fit and relocation willingness
+- A rank-consistent closing statement (positive framing for top ranks, honest gap explanation for lower ranks)
+
+Because reasoning is assembled from data fields rather than generated by an LLM, every claim maps directly to a value in the input record — there is no hallucination risk.
+
+**Output (`submission.csv`):** `candidate_id, rank, score, reasoning`
 
 ---
 
-### Stage 4: Honeypot Detection & Fraud Guarding
-* **The Vulnerability:** Fake or inflated resumes often list extremely high Years of Experience (YOE) to rank high on keyword searches but fail to list corresponding career entries.
-* **The Guard:** BeyondCV calculates the discrepancy between the user's stated YOE and their actual career timeline:
-  $$\text{YOE Gap} = \left| \text{Profile Stated YOE} - \frac{\text{Sum of Career Durations (Months)}}{12} \right|$$
-  If $\text{YOE Gap} > 3\text{ years}$, the candidate is penalized by **$-0.30$**, pushing suspicious or fraudulent applications completely out of the Top 100 ranking.
+## Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **`all-MiniLM-L6-v2`** | CPU-fast (~80MB), bundled locally so the pipeline runs fully offline — no network calls during ranking. |
+| **Pre-filter before embedding** | 100K × 3 text fields would mean ~300K encode calls. Filtering to ~1,500 relevant candidates first brings this down to ~4,500 calls, cutting runtime from tens of minutes to under 3. |
+| **Streaming JSONL read** | Candidates are read and filtered line-by-line so the full 100K-record file is never held in memory at once. |
+| **Single-pass batched encoding** | Skill, career, and profile texts for all candidates are concatenated and encoded together in one `model.encode()` call, avoiding redundant forward passes. |
+| **Gated IR bonus** | Prevents keyword-stuffed but irrelevant profiles from gaming the retrieval/ranking bonus. |
+| **Deterministic honeypot rule** | A fixed YOE-gap threshold proved more reliable than a learned signal for catching the fraud pattern present in this dataset. |
+| **Data-driven reasoning generator** | No LLM in the loop for explanations — every sentence is traceable to a specific field, eliminating hallucination risk in the audit-facing output. |
 
 ---
 
-### Stage 5: Rule-Based Explanations & Reason Generation
-To provide readable justifications without the high cost, slow speed, and hallucination risks of an external LLM, we generate reasoning strings deterministically:
-* **Rank 1–10 (Top Tier):** Emphasizes deep technical alignment, years of experience, current employer, product-company background, and active GitHub presence.
-* **Rank 11–60 (Mid Tier):** Highlights core skills but highlights minor flags such as location mismatches or notice periods.
-* **Rank 61–100 (Outliers):** Explains credentials but explicitly spells out the ranking constraints (e.g. "notice period gap," "long inactivity," "IT-services focus").
+## Technologies Used
+
+- **sentence-transformers** (`all-MiniLM-L6-v2`) — CPU-optimized semantic embeddings, bundled offline
+- **scikit-learn** — `MinMaxScaler`, `cosine_similarity` for normalization and semantic matching
+- **pandas / numpy** — vectorized feature engineering across the candidate pool
+- **argparse** — single-command CLI for reproducibility
+- **Google Colab** — zero-setup sandbox for evaluators
 
 ---
 
-## ⚡ Performance Benchmark
+## Results (reference run)
 
-Measured on standard consumer hardware (2 CPU cores, 8GB RAM, Windows 10 Pro):
-
-| Candidates Evaluated | Execution Time | Max RAM Utilization | Total API Cost |
-| :---: | :---: | :---: | :---: |
-| **100** (Colab Sandbox) | ~2.2 seconds | ~310 MB | **$0.00** |
-| **10,000** | ~17.5 seconds | ~540 MB | **$0.00** |
-| **100,000** (Full Pool) | **2 minutes, 45 seconds** | **830 MB** | **$0.00** |
+- **Top 10:** all ML/AI or Recommendation Systems Engineers from product companies (Salesforce, LinkedIn, Zomato, Netflix, Microsoft, Krutrim, Haptik), YOE range 5.7–8.8 years — inside the JD's 5–9 year target band
+- **Honeypots in top 100:** 0 (eliminated by YOE-gap detection)
+- **Score spread across top 100:** 0.724 – 0.894
+- **Runtime:** under 3 minutes on CPU for 100K candidates
 
 ---
 
-## 🚀 Reproduction Instructions
+## Requirements
 
-### 1. Set Up Environment
+```
+pandas
+numpy
+scikit-learn
+sentence-transformers
+torch
+tqdm
+joblib
+matplotlib
+seaborn
+jupyter
+```
+
 ```bash
-# Clone the repository
-git clone https://github.com/abhinavt1325/Redrob-candidate-ranking.git
-cd Redrob-candidate-ranking
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows use: venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Run the Ranking Script
-To rank your candidates and generate the final output:
+---
+
+## Reproduce
+
 ```bash
-python rank_final.py Sample_data/sample_candidates.json --out submission.csv
+python rank_final.py candidates.jsonl --out submission.csv
 ```
-*   `Sample_data/sample_candidates.json`: The candidate input file path (positional argument).
-*   `--out`: Output path for the ranked CSV. Defaults to `submission.csv`.
 
-### 3. Verify Output
-The output file `submission.csv` is fully compliant with the challenge rules, containing exactly the following headers:
-1. `candidate_id`: String identifying the candidate.
-2. `rank`: Int ranging from 1 to 100.
-3. `score`: Normalized confidence score.
-4. `reasoning`: Data-grounded, human-readable justification for the rank.
+No GPU required. No internet required. No pre-computation step needed — this single command runs the full pipeline from raw input to final ranked CSV.
 
 ---
 
-## 💡 Key Design Decisions
+## Links
 
-* **Why local `all-MiniLM-L6-v2` instead of OpenAI or BGE-Large?**
-  For information retrieval on candidate profiles, keyword and domain matching are more critical than complex semantic reasoning. `all-MiniLM-L6-v2` is a lightweight, 80MB model that runs locally on CPUs in milliseconds. It provides a 10x latency speedup over larger models with practically zero drops in NDCG accuracy, and guarantees absolute data privacy and zero API costs.
-* **Why run Stage 1 pre-filtering?**
-  Streaming the raw JSONL file to exclude non-matching candidate titles prevents the system from running costly vector embeddings on 85,000+ completely irrelevant profiles (like accountants, HR, or graphic designers), saving ~250,000 embedding operations.
-* **What is the `ir_bonus_guarded` signal?**
-  To prevent "keyword stuffing" where candidates simply list "Faiss" or "Pinecone" to rank higher, this bonus is only activated if the candidate's current title falls under an engineering domain and their career similarity score exceeds 0.3.
+- **GitHub:** https://github.com/abhinavt1325/Redrob-candidate-ranking
+- **Sandbox Demo (Colab):** https://colab.research.google.com/drive/1iY1G2Vz7iVfTe84aoJxTHPnU_LJibhGm
 
 ---
 
-## 👥 BeyondCV Team & Metadata
+*BeyondCV | India Runs Data and AI Challenge — Redrob × Hack2Skill*
 
-* **Track:** India Runs Data and AI Challenge 2026
-* **Primary Contact:** Abhinav Thakur ([abhinavt0613@gmail.com](mailto:abhinavt0613@gmail.com) | +91 8456832268)
 
 | Name | Role | Email |
 | :--- | :--- | :--- |
