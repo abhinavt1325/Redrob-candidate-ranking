@@ -96,24 +96,23 @@ graph TD
 ### Stage 3: Multi-Signal Scoring Engine
 BeyondCV balances pure semantic match with career tenure, developer activity, and availability signals via a 13-signal weighted formula:
 
-$$
-\begin{aligned}
-\text{Final Score} = \; &0.42 \times \text{semantic\_score\_norm} \\
-+ \;&0.20 \times \text{career\_score} \\
-+ \;&0.15 \times \text{behavior\_score} \\
-+ \;&0.10 \times \text{availability\_score} \\
-+ \;&0.10 \times \text{skill\_score} \\
-+ \;&0.10 \times \text{title\_prior\_norm} \\
-+ \;&0.06 \times \text{location\_score} \\
-+ \;&0.05 \times \text{industry\_bonus\_norm} \\
-+ \;&0.05 \times \text{ir\_bonus\_guarded} \\
-- \;&0.05 \times \text{integrity\_penalty} \\
-- \;&0.05 \times \text{transition\_penalty} \\
-- \;&0.05 \times \text{career\_company\_penalty} \\
-- \;&0.05 \times \text{notice\_penalty\_norm} \\
-- \;&0.03 \times \text{profile\_consistency\_penalty}
-\end{aligned}
-$$
+final_score = (
+      0.42 * semantic_score_norm        # Core JD fit (career + skill + profile similarity)
+    + 0.20 * career_score               # YOE, tenure, avg job duration, degree
+    + 0.15 * behavior_score             # Recruiter response, interview rate, GitHub, recruiter saves, profile views
+    + 0.10 * availability_score         # Open to work, willing to relocate, recent activity
+    + 0.10 * skill_score                # Skill count, avg duration, endorsements
+    + 0.10 * title_prior_norm           # Title relevance to the JD
+    + 0.06 * location_score             # Preferred / supported hiring cities
+    + 0.05 * industry_bonus_norm        # Product company vs. services/manufacturing
+    + 0.05 * ir_bonus_guarded           # IR/retrieval keyword bonus (gated, see below)
+    - 0.05 * integrity_penalty          # Job-hopping (>8 switches), inactivity
+    - 0.05 * transition_penalty         # Non-technical title dressed up with AI buzzwords
+    - 0.05 * career_company_penalty     # 100% career spent at pure-services companies
+    - 0.05 * notice_penalty_norm        # Long notice period
+    - 0.03 * profile_consistency_penalty  # Internal profile inconsistencies
+)
+```
 
 #### Detailed Weights and Signals breakdown:
 | Signal Category | Attribute | Weight | Function |
