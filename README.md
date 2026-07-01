@@ -135,7 +135,10 @@ Fastest CPU-compatible model (80MB, ~2x faster than BGE-small). Quality differen
 Raw IR keyword bonus rewards anyone who lists "Pinecone" in their skills — including Marketing Managers. Guarded version only grants the bonus if `title_prior > 0 AND career_similarity > 0.3`, ensuring keyword presence is backed by career evidence.
 
 **Why `-0.30` for YOE gap?**
-Honeypot candidates in this dataset all share the same signature: stated YOE is 8–11 years higher than actual career history. A deterministic penalty is more reliable than a learned signal for this pattern.
+Honeypot candidates in this dataset all share the same signature: stated YOE is 8–11 years higher than actual career history. A deterministic penalty is more reliable than a learned signal for this pattern. 
+
+**Streaming JSONL read** : readCandidates are read and filtered line-by-line so the full 100K-record file is never held in memory at once.
+
 
 ---
 ## Results 
