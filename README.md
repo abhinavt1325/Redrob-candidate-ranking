@@ -1,7 +1,18 @@
 # Redrob AI Challenge — Candidate Ranking System
-**Team:** BeyondCV | **Role:** Senior AI Engineer | **Track:** India Runs Data and AI Challenge
+**Redrob × Hack2Skill — India Runs Data & AI Challenge**
 
+**Team**: BeyondCV — Abhinav Thakur (Lead), Anurudh Shrestha, Aashika Kumari, Ayushi Choudhary
 ---
+
+ ## Problem
+
+Recruiters screening 100K+ candidates for a single role spend days on manual filtering — and still miss top talent, because traditional ATS systems match keywords, not careers. This project builds a system that understands what actually makes a candidate qualified: career trajectory, real-world IR/retrieval experience, behavioral signals, and genuine fit — not just whether they listed the right buzzwords.
+
+## What it does
+
+Given candidates.jsonl (up to 100K profiles) and a fixed job description, rank_final.py streams, filters, scores, and ranks candidates end-to-end, producing the top 100 with a JD-grounded, per-candidate reasoning string — in under 3 minutes, on CPU only, with no internet access required.
+
+**100K+ candidates → Pre-filter (~1,500) → Semantic + Multi-signal scoring → Honeypot filter → Top 100 + reasoning**
 
 ## 🚀 Quick Start
 
@@ -15,6 +26,8 @@ python rank_final.py candidates.jsonl --out submission.csv
 
 **Runtime:** ~3 minutes on CPU for 100K candidates
 
+**Compute:**- no GPU, no internet — the embedding model is bundled locally under models/
+Files with ≤200 lines are treated as sandbox/demo input and skip the pre-filter, so small sample files still produce full output.
 ---
 
 ## 🔗 Sandbox Demo
@@ -29,15 +42,24 @@ Upload any JSONL or JSON candidate file (≤100 candidates) and get ranked outpu
 
 ## 📁 Repository Structure
 
-```
-├── rank_final.py                  # Main ranker — runs end-to-end from candidates.jsonl
-├── submission.csv                 # Final ranked output (top 100 candidates)
-├── sample_candidates.json         # 50 sample candidates for sandbox demo
-├── requirements.txt               # Exact package versions
+├── rank_final.py                    # End-to-end ranking pipeline (single script, single command)
+├── requirements.txt                 # Dependencies
+├── candidate_schema.json            # JSON Schema for a single candidate profile
+├── submission_metadata.yaml         # Team info, compute environment, methodology declaration
 ├── models/
-│   └── all-MiniLM-L6-v2/         # Bundled sentence-transformers model (offline)
+│   └── all-MiniLM-L6-v2/            # Bundled sentence-transformers model (offline, ~80MB)
+├── Sample_data/
+│   ├── sample_candidates.json       # Sample candidates for local/sandbox testing
+│   └── sample_submission.csv        # Example output format
+├── Notebooks/                       # Exploration & development notebooks
+│   ├── dataset-study.ipynb
+│   ├── dataset_cleaning.ipynb
+│   ├── feature_engineering.ipynb
+│   ├── feature_engineering_advanced.ipynb
+│   ├── feature_engineering_advanced_2.ipynb
+│   ├── hybrid_ranking.ipynb
+│   └── full_ranking.ipynb
 └── README.md
-```
 
 ---
 
@@ -116,6 +138,13 @@ Raw IR keyword bonus rewards anyone who lists "Pinecone" in their skills — inc
 Honeypot candidates in this dataset all share the same signature: stated YOE is 8–11 years higher than actual career history. A deterministic penalty is more reliable than a learned signal for this pattern.
 
 ---
+## Results 
+
+
+-**Top 10:** : all ML/AI or Recommendation Systems Engineers from product companies (Salesforce, LinkedIn, Zomato, Netflix, Microsoft, Krutrim, Haptik), YOE range 5.7–8.8 years — inside the JD's 5–9 year target band
+**-Honeypots in top 100**: 0 (eliminated by YOE-gap detection)
+**-Score spread across top 100**: 0.724 – 0.894
+**-Runtime:** : under 3 minutes on CPU for 100K candidates
 
 ## 📦 Requirements
 
@@ -139,6 +168,11 @@ pip install -r requirements.txt
 # Full pipeline — reads candidates.jsonl, writes submission.csv
 python rank_final.py candidates.jsonl --out submission.csv
 ```
+
+## Links
+
+- **GitHub:** https://github.com/abhinavt1325/Redrob-candidate-ranking
+- **Sandbox Demo (Colab):** https://colab.research.google.com/drive/1iY1G2Vz7iVfTe84aoJxTHPnU_LJibhGm
 
 No GPU required. No internet required. No pre-computation step needed.
 
